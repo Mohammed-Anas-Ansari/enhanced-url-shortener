@@ -26,7 +26,7 @@ public class KeyGeneratorScheduler {
 
     // TODO: create scheduler (either here or in a separate expiration class) for disabling expired short_url
 
-    @Scheduled(cron = "0 5 0 * * *", zone = "UTC")
+    @Scheduled(cron = "0 1 0 * * *", zone = "UTC")
     public void deleteAllExpiredURL() {
         log.info("deleteAllExpiredURL Scheduler started...");
         urlMappingService.deleteAllExpiredURL();

@@ -3,6 +3,7 @@ package com.eus.exception.controller;
 import com.eus.dto.CustomResponse;
 import com.eus.dto.ValidationErrorResponse;
 import com.eus.exception.ResourceNotFoundException;
+import com.eus.exception.ServiceUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
@@ -39,6 +40,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({ResourceNotFoundException.class})
     public ResponseEntity<CustomResponse<Object>> handleResourceNotFoundException(Exception ex) {
+        CustomResponse<Object> response = error(REGULAR, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler({ServiceUnavailableException.class})
+    public ResponseEntity<CustomResponse<Object>> handleServiceUnavailableException(Exception ex) {
         CustomResponse<Object> response = error(REGULAR, ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }

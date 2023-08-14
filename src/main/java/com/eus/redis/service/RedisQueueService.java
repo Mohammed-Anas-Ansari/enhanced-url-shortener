@@ -1,13 +1,18 @@
 package com.eus.redis.service;
 
+import com.eus.exception.ServiceUnavailableException;
 import com.eus.redis.enums.RedisEntry;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+import static com.eus.redis.enums.RedisEntry.GENERATED_KEY_QUEUE;
+
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class RedisQueueService {
 
@@ -26,7 +31,19 @@ public class RedisQueueService {
     }
 
     public String popFromQueueHead(RedisEntry key) {
-        return redisTemplate.opsForList().leftPop(String.valueOf(key));
+        String firstPop = redisTemplate.opsForList().leftPop(String.valueOf(key));
+        if (firstPop == null) {
+            for (int i = 0; i < 3; i++) {
+                log.error("Retry count for non null key: {}", i + 1);
+                String nextPop = redisTemplate.opsForList().leftPop(String.valueOf(key));
+                if (nextPop != null) {
+                    return nextPop;
+                }
+            }
+            log.error("Got 3 subsequent null keys. Redis queue size is {}", getQueue(GENERATED_KEY_QUEUE).size());
+            throw new ServiceUnavailableException("Please try again later!");
+        }
+        return firstPop;
     }
 
     public List<String> getQueue(RedisEntry key) {

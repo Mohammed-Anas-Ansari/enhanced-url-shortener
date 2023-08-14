@@ -7,6 +7,7 @@ import com.eus.entity.URLMapping;
 import com.eus.enums.ExpirationType;
 import com.eus.enums.StatusType;
 import com.eus.exception.ResourceNotFoundException;
+import com.eus.exception.ServiceUnavailableException;
 import com.eus.redis.enums.RedisEntry;
 import com.eus.redis.service.RedisQueueService;
 import com.eus.repository.URLMappingRepository;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -40,7 +42,7 @@ public class URLMappingService {
         String shortURL = getShortURL();
         if (shortURL == null) {
             log.error("Failed to get short URL for unregistered user!");
-            return null;
+            throw new ServiceUnavailableException("Please try again later!");
         }
         URLMapping urlMapping = URLMapping.builder()
                 .shortURL(shortURL)
@@ -58,7 +60,7 @@ public class URLMappingService {
                 .build();
     }
 
-    // TODO: add @Transactional
+    @Transactional
     public URLMappingResponse getOriginalURL(String shortURL, LinkAnalyticRequest linkAnalyticRequest) {
         Optional<URLMapping> optionalURLMapping = urlMappingRepository.findByShortURL(shortURL);
         if (optionalURLMapping.isEmpty()) {
@@ -67,7 +69,8 @@ public class URLMappingService {
         }
         URLMapping urlMapping = optionalURLMapping.get();
         if (urlMapping.getStatusType() == StatusType.INACTIVE) {
-            // TODO: throw 404
+            log.warn("The short URL is inactive!");
+            throw new ResourceNotFoundException("The short URL is inactive!");
         } else if (urlMapping.getStatusType() == StatusType.SUSPENDED) {
             log.warn("Suspended short URL was attempted to be visited!");
             throw new ResourceNotFoundException("Suspended short URL was attempted to be visited!");
@@ -75,7 +78,7 @@ public class URLMappingService {
         urlMapping.setClickCount(urlMapping.getClickCount() + 1);
         urlMappingRepository.save(urlMapping);
         linkAnalyticService.createLinkAnalytic(shortURL, linkAnalyticRequest);
-        // TODO: update the expiry
+        updateExpiry(urlMapping);
         return URLMappingResponse.builder()
                 .longURL(urlMapping.getLongURL())
                 .build();
@@ -99,32 +102,25 @@ public class URLMappingService {
         urlMappings.stream()
                 .filter(urlMapping -> ChronoUnit.DAYS.between(now, urlMapping.getCreatedAt()) <= 0)
                 .forEach(urlMapping -> {
-                    urlMapping.setDeleted(true);
-                    urlMapping.setExpiryDate(LocalDateTime.now(ZoneOffset.UTC));
+                    if (ChronoUnit.DAYS.between(now, urlMapping.getCreatedAt()) <= 0) {
+                        urlMapping.setDeleted(true);
+                        urlMapping.setExpiryDate(LocalDateTime.now(ZoneOffset.UTC));
+                    } else {
+                        urlMapping.setExpiryValueUsed(urlMapping.getExpiryValueUsed() + 1);
+                    }
                     urlMappingRepository.save(urlMapping);
                 });
     }
 
     private void updateExpiry(URLMapping urlMapping) {
-        // TODO: update clickCount
         if (urlMapping.getExpiryType() == ExpirationType.NUMBER_OF_CLICKS) {
-            // FIXME: add validation to set expiryValue above 0
-            if (urlMapping.getExpiryValue() <= urlMapping.getExpiryValueUsed()) {
-                urlMapping.setExpiryValueUsed(urlMapping.getExpiryValueUsed() + 1);
-            } else if (urlMapping.getExpiryDate() == null) {
+            // FIXME: add validation to set expiryValue above 0 for NUMBER_OF_CLICKS and DAYS
+            urlMapping.setExpiryValueUsed(urlMapping.getExpiryValueUsed() + 1);
+            if (urlMapping.getExpiryValue() == urlMapping.getExpiryValueUsed()) {
                 urlMapping.setExpiryDate(LocalDateTime.now(ZoneOffset.UTC));
                 urlMapping.setStatusType(StatusType.INACTIVE);
-            } else {
-                // TODO: throw 404
             }
+            urlMappingRepository.save(urlMapping);
         }
-        // do nothing for NUMBER_OF_DAYS and NONE type
-        // TODO: NUMBER_OF_DAYS expiryValueUsed must be updated along with expiry check through cron at 12:10 am UTC
-//        else {
-//            LocalDate createdAt = urlMapping.getCreatedAt().toLocalDate();
-//            LocalDate now = LocalDateTime.now(ZoneOffset.UTC).toLocalDate();
-//            long daysUsed = ChronoUnit.DAYS.between(createdAt.plusDays(urlMapping.getExpiryValueUsed()), now);
-//        }
-        urlMappingRepository.save(urlMapping);
     }
 }

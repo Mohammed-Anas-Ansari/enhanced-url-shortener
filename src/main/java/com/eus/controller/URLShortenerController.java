@@ -32,9 +32,6 @@ public class URLShortenerController {
     @PostMapping("/short_")
     public ResponseEntity<URLMappingResponse> createMapping(@Valid @RequestBody URLMappingRequest request) {
         URLMappingResponse mappingForUnregisteredUser = urlMappingService.createMappingForUnregisteredUser(request);
-        if (mappingForUnregisteredUser == null) {
-            return ResponseEntity.internalServerError().build();
-        }
         return ResponseEntity.created(URI.create(domain + "/" + mappingForUnregisteredUser.getShortURL())).body(mappingForUnregisteredUser);
     }
 
